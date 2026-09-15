@@ -1,0 +1,38 @@
+# Render 배포 설정 파일
+# 사용법: Render 대시보드에서 "Infrastructure as Code" → render.yaml 업로드
+
+services:
+  - type: web
+    name: ai-stock-chatbot
+    env: python
+    region: singapore  # 또는 oregon (미국)
+    plan: free  # 무료 플랜
+
+    # 시작 명령어
+    startCommand: "uvicorn main:app --host 0.0.0.0 --port $PORT --workers 1"
+
+    # 환경 변수 (보안: Render 대시보드에서 설정 권장)
+    envVars:
+      - key: PYTHON_VERSION
+        value: "3.11"
+      - key: DEBUG
+        value: "false"
+
+    # 헬스체크 설정 (무료 플랜 슬립 방지)
+    healthCheckPath: /health
+    healthCheckInterval: 30  # 30초마다 확인
+
+    # 배포 설정
+    buildCommand: "pip install -r requirements.txt"
+
+    # 환경 변수 (민감한 정보는 Render 대시보드 Environment에서 설정)
+    # - GOOGLE_API_KEY
+    # - KAKAO_APP_ID
+    # - KAKAO_APP_SECRET
+    # - KAKAO_CALLBACK_URL
+
+# 참고: 다음 환경 변수는 Render 대시보드의 Environment 탭에서 수동으로 추가하세요
+# 1. GOOGLE_API_KEY: Google Gemini API 키
+# 2. KAKAO_APP_ID: 카카오 앱 ID
+# 3. KAKAO_APP_SECRET: 카카오 앱 시크릿
+# 4. KAKAO_CALLBACK_URL: 콜백 URL (e.g., https://your-app.onrender.com/v1/callback)
