@@ -27,49 +27,60 @@ except ImportError:
     YouTubeTranscriptApi = None
 
 try:
-    from gnews import GNews
+    import feedparser
 except ImportError:
-    GNews = None
+    feedparser = None
 
 logger = get_logger(__name__)
 
 
-class GoogleNewsScraper:
-    """Google News를 통한 금융 뉴스 스크래핑"""
+class FinanceNewsScraper:
+    """RSS 피드를 통한 금융 뉴스 스크래핑"""
+
+    RSS_FEEDS = [
+        "https://feeds.bloomberg.com/markets/news.rss",
+        "https://feeds.finance.naver.com/news/mainnews.xml",
+    ]
 
     @staticmethod
     async def get_finance_news(limit: int = 5) -> List[Dict[str, str]]:
-        """Google News 경제/금융 뉴스 헤드라인 (비동기)"""
+        """금융 뉴스 헤드라인 (비동기)"""
         try:
-            if not GNews:
-                logger.error("google-news library not installed")
+            if not feedparser:
+                logger.error("feedparser not installed")
                 return []
 
             loop = asyncio.get_event_loop()
 
             def fetch_news():
                 try:
-                    google_news = GNews(language='ko', country='KR', max_results=limit)
-                    news_articles = google_news.get_news('한국 주식 금융')
+                    all_articles = []
 
-                    result = []
-                    for article in news_articles[:limit]:
-                        result.append({
-                            "title": article.get("title", ""),
-                            "url": article.get("url", ""),
-                            "source": article.get("source", "Google News")
-                        })
-                    return result
+                    for feed_url in FinanceNewsScraper.RSS_FEEDS:
+                        try:
+                            feed = feedparser.parse(feed_url)
+
+                            for entry in feed.entries[:limit]:
+                                all_articles.append({
+                                    "title": entry.get("title", ""),
+                                    "url": entry.get("link", ""),
+                                    "source": feed.feed.get("title", "Finance News")
+                                })
+                        except Exception as e:
+                            logger.warning(f"Error parsing feed {feed_url}: {str(e)}")
+                            continue
+
+                    return all_articles[:limit]
                 except Exception as e:
-                    logger.error(f"Google News fetch error: {str(e)}")
+                    logger.error(f"RSS feed fetch error: {str(e)}")
                     return []
 
             news_list = await loop.run_in_executor(None, fetch_news)
-            logger.info(f"Fetched {len(news_list)} news articles from Google News")
+            logger.info(f"Fetched {len(news_list)} news articles from RSS feeds")
             return news_list
 
         except Exception as e:
-            logger.error(f"Error fetching Google News: {str(e)}")
+            logger.error(f"Error fetching finance news: {str(e)}")
             return []
 
 
@@ -164,8 +175,8 @@ class YouTubeTranscriptScraper:
 # ========================================
 
 async def fetch_naver_news(limit: int = 5) -> List[Dict[str, str]]:
-    """Google News 뉴스 요약 함수"""
-    return await GoogleNewsScraper.get_finance_news(limit)
+    """금융 뉴스 요약 함수 (RSS 피드)"""
+    return await FinanceNewsScraper.get_finance_news(limit)
 
 
 async def extract_article_summary(url: str) -> Optional[str]:
