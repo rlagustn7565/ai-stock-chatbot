@@ -25,7 +25,7 @@ class GeminiService:
         else:
             genai.configure(api_key=self.api_key)
 
-        self.model = genai.GenerativeModel("gemini-1.5-flash")
+        self.model = genai.GenerativeModel("gemini-1.5-pro")
 
     @staticmethod
     def _create_prompt_news_summary() -> str:
