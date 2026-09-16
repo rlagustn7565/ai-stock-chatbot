@@ -93,11 +93,14 @@ class ArticleScraper:
     async def extract_article_text(url: str, timeout: float = 8.0) -> Optional[str]:
         """기사 URL에서 본문 텍스트 추출"""
         try:
-            async with httpx.AsyncClient(timeout=timeout) as client:
+            async with httpx.AsyncClient(timeout=timeout, follow_redirects=True, verify=False) as client:
                 response = await client.get(
                     url,
                     headers={
-                        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+                        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+                        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+                        "Accept-Language": "ko-KR,ko;q=0.9,en;q=0.8",
+                        "Referer": "https://www.naver.com/",
                     }
                 )
                 response.raise_for_status()
