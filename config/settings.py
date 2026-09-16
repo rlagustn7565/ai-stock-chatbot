@@ -33,6 +33,9 @@ class Settings(BaseSettings):
     # Finnhub API 설정
     FINNHUB_API_KEY: str = ""
 
+    # KRX API 설정
+    KRX_API_KEY: str = ""
+
     # 타임아웃 설정 (밀리초)
     HTTP_TIMEOUT: int = 8000
     FINANCE_TIMEOUT: int = 5000
