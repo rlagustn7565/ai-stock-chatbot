@@ -9,6 +9,7 @@ import yfinance as yf
 from datetime import datetime, timedelta
 from typing import Optional, Dict
 from utils.logger import get_logger
+from config.settings import get_settings
 
 try:
     from pykrx import stock
