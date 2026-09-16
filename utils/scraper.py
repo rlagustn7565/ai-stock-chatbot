@@ -38,8 +38,10 @@ class FinanceNewsScraper:
     """RSS 피드를 통한 금융 뉴스 스크래핑"""
 
     RSS_FEEDS = [
-        "https://feeds.bloomberg.com/markets/news.rss",
-        "https://feeds.finance.naver.com/news/mainnews.xml",
+        "https://feeds.hankyung.com/hankyung/business.xml",  # 한국경제
+        "https://rss.mt.co.kr/mtlist.xml",  # 매일경제
+        "https://feeds.daum.net/financial/rss.xml",  # 다음 금융
+        "https://www.yonhapnewstv.co.kr/browse/feed/",  # 연합뉴스
     ]
 
     @staticmethod
