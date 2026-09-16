@@ -39,14 +39,25 @@ class IndexService:
             loop = asyncio.get_event_loop()
 
             def fetch():
-                data = yf.Ticker(ticker)
-                hist = data.history(period="1d")
-                return hist
+                try:
+                    data = yf.Ticker(ticker, session=None)
+                    hist = data.history(period="5d")
+                    return hist
+                except Exception:
+                    return None
 
             hist = await loop.run_in_executor(None, fetch)
 
-            if hist.empty:
-                return None
+            if hist is None or hist.empty:
+                return {
+                    "name": index_name,
+                    "ticker": ticker,
+                    "price": 0,
+                    "change": 0,
+                    "change_percent": 0,
+                    "timestamp": datetime.now().isoformat(),
+                    "note": "데이터를 불러올 수 없습니다"
+                }
 
             price = hist["Close"].iloc[-1]
             open_price = hist["Open"].iloc[-1]
@@ -77,14 +88,24 @@ class IndexService:
             loop = asyncio.get_event_loop()
 
             def fetch():
-                data = yf.Ticker(ticker)
-                hist = data.history(period="1d")
-                return hist
+                try:
+                    data = yf.Ticker(ticker, session=None)
+                    hist = data.history(period="5d")
+                    return hist
+                except Exception:
+                    return None
 
             hist = await loop.run_in_executor(None, fetch)
 
-            if hist.empty:
-                return None
+            if hist is None or hist.empty:
+                return {
+                    "pair": currency_pair,
+                    "rate": 0,
+                    "change": 0,
+                    "change_percent": 0,
+                    "timestamp": datetime.now().isoformat(),
+                    "note": "데이터를 불러올 수 없습니다"
+                }
 
             price = hist["Close"].iloc[-1]
             open_price = hist["Open"].iloc[-1]

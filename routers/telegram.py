@@ -255,21 +255,23 @@ async def telegram_webhook(request: dict):
 
         logger.info(f"[Telegram] {chat_id}: {text}")
 
-        # 명령어 라우팅
+        # 명령어 라우팅 (언더스코어와 공백 모두 지원)
+        text_normalized = text.replace("_", " ").lower()
+
         if text == "/start":
             await handle_start(chat_id)
         elif text == "/indices":
             await handle_indices(chat_id)
         elif text == "/news":
             await handle_news(chat_id)
-        elif text.startswith("/summarize_article"):
-            url = text.replace("/summarize_article", "").strip()
+        elif text_normalized.startswith("/summarize article") or text.startswith("/summarize_article"):
+            url = text.replace("/summarize_article", "").replace("/summarizearticle", "").replace("/summarize article", "").strip()
             await handle_summarize_article(chat_id, url)
-        elif text.startswith("/summarize_youtube"):
-            url = text.replace("/summarize_youtube", "").strip()
+        elif text_normalized.startswith("/summarize youtube") or text.startswith("/summarize_youtube"):
+            url = text.replace("/summarize_youtube", "").replace("/summarizeyoutube", "").replace("/summarize youtube", "").strip()
             await handle_summarize_youtube(chat_id, url)
-        elif text.startswith("/analyze_stock"):
-            stock = text.replace("/analyze_stock", "").strip()
+        elif text_normalized.startswith("/analyze stock") or text.startswith("/analyze_stock"):
+            stock = text.replace("/analyze_stock", "").replace("/analyzestock", "").replace("/analyze stock", "").strip()
             await handle_analyze_stock(chat_id, stock)
         else:
             await send_message(chat_id, "❓ 명령어를 인식하지 못했습니다.\n/start 를 입력해주세요.")
