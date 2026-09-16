@@ -1,12 +1,12 @@
 """
-Gemini API 기반 AI 요약 및 분석 서비스
+Groq API 기반 AI 요약 및 분석 서비스
 - 뉴스 기사 요약 및 관련 종목 태깅
 - 유튜브 자막 요약 및 투자 인사이트
 - 종목 시황 분석
 """
 
 import asyncio
-import google.generativeai as genai
+from groq import Groq
 from typing import Optional, List, Dict, Tuple
 from utils.logger import get_logger
 from config.settings import get_settings
@@ -14,18 +14,16 @@ from config.settings import get_settings
 logger = get_logger(__name__)
 
 
-class GeminiService:
-    """Google Gemini API 서비스"""
+class GroqService:
+    """Groq API 서비스"""
 
     def __init__(self):
         settings = get_settings()
-        self.api_key = settings.GOOGLE_API_KEY
+        self.api_key = settings.GROQ_API_KEY
         if not self.api_key:
-            logger.warning("GOOGLE_API_KEY not set")
+            logger.warning("GROQ_API_KEY not set")
         else:
-            genai.configure(api_key=self.api_key)
-
-        self.model = genai.GenerativeModel("gemini-1.5-pro")
+            self.client = Groq(api_key=self.api_key)
 
     @staticmethod
     def _create_prompt_news_summary() -> str:
@@ -96,8 +94,11 @@ class GeminiService:
             loop = asyncio.get_event_loop()
 
             def generate():
-                response = self.model.generate_content(prompt)
-                return response.text
+                response = self.client.chat.completions.create(
+                    model="mixtral-8x7b-32768",
+                    messages=[{"role": "user", "content": prompt}]
+                )
+                return response.choices[0].message.content
 
             result = await loop.run_in_executor(None, generate)
 
@@ -137,8 +138,11 @@ class GeminiService:
             loop = asyncio.get_event_loop()
 
             def generate():
-                response = self.model.generate_content(prompt)
-                return response.text
+                response = self.client.chat.completions.create(
+                    model="mixtral-8x7b-32768",
+                    messages=[{"role": "user", "content": prompt}]
+                )
+                return response.choices[0].message.content
 
             result = await loop.run_in_executor(None, generate)
 
@@ -190,8 +194,11 @@ class GeminiService:
             loop = asyncio.get_event_loop()
 
             def generate():
-                response = self.model.generate_content(prompt)
-                return response.text
+                response = self.client.chat.completions.create(
+                    model="mixtral-8x7b-32768",
+                    messages=[{"role": "user", "content": prompt}]
+                )
+                return response.choices[0].message.content
 
             result = await loop.run_in_executor(None, generate)
 
@@ -218,12 +225,12 @@ class GeminiService:
 
 
 # 싱글톤 인스턴스
-_gemini_service = None
+_groq_service = None
 
 
-def get_gemini_service() -> GeminiService:
-    """Gemini 서비스 싱글톤 인스턴스"""
-    global _gemini_service
-    if _gemini_service is None:
-        _gemini_service = GeminiService()
-    return _gemini_service
+def get_gemini_service() -> GroqService:
+    """Groq 서비스 싱글톤 인스턴스 (호환성 유지)"""
+    global _groq_service
+    if _groq_service is None:
+        _groq_service = GroqService()
+    return _groq_service
