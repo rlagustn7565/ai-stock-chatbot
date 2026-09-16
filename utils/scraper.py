@@ -26,48 +26,50 @@ try:
 except ImportError:
     YouTubeTranscriptApi = None
 
+try:
+    from gnews import GNews
+except ImportError:
+    GNews = None
+
 logger = get_logger(__name__)
 
 
-class NaverNewsScraper:
-    """네이버 뉴스 스크래핑"""
+class GoogleNewsScraper:
+    """Google News를 통한 금융 뉴스 스크래핑"""
 
     @staticmethod
     async def get_finance_news(limit: int = 5) -> List[Dict[str, str]]:
-        """네이버 경제/금융 뉴스 헤드라인 (비동기)"""
+        """Google News 경제/금융 뉴스 헤드라인 (비동기)"""
         try:
-            url = "https://stock.naver.com/news"
-            async with httpx.AsyncClient(timeout=8.0) as client:
-                response = await client.get(url, headers={"User-Agent": "Mozilla/5.0"})
-                response.raise_for_status()
+            if not GNews:
+                logger.error("google-news library not installed")
+                return []
 
-            soup = BeautifulSoup(response.content, "lxml")
-            news_list = []
+            loop = asyncio.get_event_loop()
 
-            # .type5 클래스의 dd 태그에서 뉴스 추출
-            items = soup.find_all("dd", class_="")[:limit]
+            def fetch_news():
+                try:
+                    google_news = GNews(language='ko', country='KR', max_results=limit)
+                    news_articles = google_news.get_news('한국 주식 금융')
 
-            for item in items:
-                link_elem = item.find("a")
-                if link_elem:
-                    title = link_elem.get_text(strip=True)
-                    href = link_elem.get("href", "")
-
-                    if href.startswith("/"):
-                        href = "https://finance.naver.com" + href
-
-                    if title and href:
-                        news_list.append({
-                            "title": title,
-                            "url": href,
-                            "source": "Naver Finance"
+                    result = []
+                    for article in news_articles[:limit]:
+                        result.append({
+                            "title": article.get("title", ""),
+                            "url": article.get("url", ""),
+                            "source": article.get("source", "Google News")
                         })
+                    return result
+                except Exception as e:
+                    logger.error(f"Google News fetch error: {str(e)}")
+                    return []
 
-            logger.info(f"Fetched {len(news_list)} news articles")
+            news_list = await loop.run_in_executor(None, fetch_news)
+            logger.info(f"Fetched {len(news_list)} news articles from Google News")
             return news_list
 
         except Exception as e:
-            logger.error(f"Error fetching Naver news: {str(e)}")
+            logger.error(f"Error fetching Google News: {str(e)}")
             return []
 
 
@@ -162,8 +164,8 @@ class YouTubeTranscriptScraper:
 # ========================================
 
 async def fetch_naver_news(limit: int = 5) -> List[Dict[str, str]]:
-    """네이버 뉴스 요약 함수"""
-    return await NaverNewsScraper.get_finance_news(limit)
+    """Google News 뉴스 요약 함수"""
+    return await GoogleNewsScraper.get_finance_news(limit)
 
 
 async def extract_article_summary(url: str) -> Optional[str]:
