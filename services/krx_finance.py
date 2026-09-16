@@ -43,24 +43,17 @@ class KRXIndexService:
             # 요청 파라미터
             base_date = datetime.now().strftime("%Y%m%d")
 
-            async with httpx.AsyncClient(timeout=8.0) as client:
-                # 방식 1: Header에 X-API-Key
-                headers = {"X-API-Key": api_key}
-                params = {"basDd": base_date}
+            headers = {
+                "AUTH_KEY": api_key,
+                "Content-Type": "application/json"
+            }
+            params = {"basDd": base_date}
+
+            async with httpx.AsyncClient(timeout=8.0, verify=False) as client:
                 response = await client.get(url, params=params, headers=headers)
 
-                # 401이면 방식 2: Query parameter apiKey (대문자)
-                if response.status_code == 401:
-                    params = {"basDd": base_date, "apiKey": api_key}
-                    response = await client.get(url, params=params)
-
-                # 여전히 401이면 방식 3: Query parameter api_key
-                if response.status_code == 401:
-                    params = {"basDd": base_date, "api_key": api_key}
-                    response = await client.get(url, params=params)
-
                 if response.status_code != 200:
-                    logger.warning(f"KRX API error {response.status_code} for {index_name}")
+                    logger.warning(f"KRX API error {response.status_code} for {index_name}: {response.text}")
                     return None
 
                 data = response.json()
