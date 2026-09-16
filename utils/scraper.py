@@ -36,7 +36,7 @@ class NaverNewsScraper:
     async def get_finance_news(limit: int = 5) -> List[Dict[str, str]]:
         """네이버 경제/금융 뉴스 헤드라인 (비동기)"""
         try:
-            url = "https://finance.naver.com/news/"
+            url = "https://stock.naver.com/news"
             async with httpx.AsyncClient(timeout=8.0) as client:
                 response = await client.get(url, headers={"User-Agent": "Mozilla/5.0"})
                 response.raise_for_status()
