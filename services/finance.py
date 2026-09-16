@@ -6,7 +6,7 @@
 
 import asyncio
 import yfinance as yf
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Optional, Dict
 from utils.logger import get_logger
 
@@ -48,11 +48,15 @@ class IndexService:
             if index_name in ["KOSPI", "KOSDAQ"] and stock:
                 def fetch_kr():
                     try:
+                        end_date = datetime.now().strftime("%Y%m%d")
+                        start_date = (datetime.now() - timedelta(days=5)).strftime("%Y%m%d")
+
                         if index_name == "KOSPI":
-                            return stock.get_index_ohlcv("20260910", "20260916", "1001")
+                            return stock.get_index_ohlcv(start_date, end_date, "1001")
                         else:  # KOSDAQ
-                            return stock.get_index_ohlcv("20260910", "20260916", "2001")
-                    except Exception:
+                            return stock.get_index_ohlcv(start_date, end_date, "2001")
+                    except Exception as e:
+                        logger.error(f"pykrx error: {str(e)}")
                         return None
 
                 hist = await loop.run_in_executor(None, fetch_kr)
