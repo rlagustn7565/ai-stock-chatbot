@@ -95,7 +95,7 @@ class GroqService:
 
             def generate():
                 response = self.client.chat.completions.create(
-                    model="gemma-2-9b-it",
+                    model="qwen/qwen3.8-27b",
                     messages=[{"role": "user", "content": prompt}]
                 )
                 return response.choices[0].message.content
@@ -139,7 +139,7 @@ class GroqService:
 
             def generate():
                 response = self.client.chat.completions.create(
-                    model="gemma-2-9b-it",
+                    model="qwen/qwen3.8-27b",
                     messages=[{"role": "user", "content": prompt}]
                 )
                 return response.choices[0].message.content
@@ -195,7 +195,7 @@ class GroqService:
 
             def generate():
                 response = self.client.chat.completions.create(
-                    model="gemma-2-9b-it",
+                    model="qwen/qwen3.8-27b",
                     messages=[{"role": "user", "content": prompt}]
                 )
                 return response.choices[0].message.content
