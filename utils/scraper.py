@@ -105,15 +105,26 @@ class ArticleScraper:
                 )
                 response.raise_for_status()
 
-            # trafilatura로 기사 텍스트 추출
+            # 1. trafilatura로 기사 텍스트 추출
             text = extract(response.content, output_format="txt")
 
-            if text:
-                logger.info(f"Successfully extracted article from {url}")
-                return text[:2000]  # 처음 2000자만 반환
-            else:
-                logger.warning(f"No article text extracted from {url}")
-                return None
+            if text and len(text) > 100:
+                logger.info(f"Successfully extracted article from {url} via trafilatura")
+                return text[:2000]
+
+            # 2. 폴백: BeautifulSoup으로 직접 파싱 (네이버 뉴스)
+            soup = BeautifulSoup(response.content, "html.parser")
+
+            # 네이버 뉴스 구조: article_body 또는 newsct_body
+            article_body = soup.find("div", {"id": "article_body"}) or soup.find("div", {"class": "newsct_body"})
+            if article_body:
+                text = article_body.get_text(separator=" ", strip=True)
+                if text and len(text) > 100:
+                    logger.info(f"Successfully extracted article from {url} via BeautifulSoup")
+                    return text[:2000]
+
+            logger.warning(f"No article text extracted from {url} (trafilatura + BeautifulSoup failed)")
+            return None
 
         except Exception as e:
             logger.error(f"Error extracting article from {url}: {str(e)}")
