@@ -15,7 +15,7 @@ from utils.scraper import (
 )
 from utils.logger import get_logger
 import asyncio
-import requests
+import httpx
 from config.settings import get_settings
 
 logger = get_logger(__name__)
@@ -32,28 +32,63 @@ def create_skill_response(text: str) -> SkillResponse:
     )
 
 
-async def send_callback(callback_text: str):
-    """카카오 콜백 URL로 메시지 전송 (비동기)"""
+def extract_callback_url(request: SkillRequest) -> str:
+    """요청에서 카카오 콜백 URL 추출
+
+    카카오 요청 구조:
+    - userRequest.callbackUrl (공식 스펙)
+    또는 최상위 레벨의 추가 필드
+    """
+    # Pydantic v2: model_extra 또는 __dict__ 사용
+    request_dict = request.model_dump() if hasattr(request, 'model_dump') else request.dict()
+
+    # userRequest 내부에서 찾기
+    if 'userRequest' in request_dict and isinstance(request_dict['userRequest'], dict):
+        callback_url = request_dict['userRequest'].get('callbackUrl')
+        if callback_url:
+            return callback_url
+
+    # 최상위 레벨에서 찾기
+    callback_url = request_dict.get('callbackUrl')
+    if callback_url:
+        return callback_url
+
+    logger.warning("Callback URL not found in request")
+    return None
+
+
+async def send_callback(callback_url: str, callback_text: str):
+    """카카오 콜백 URL로 메시지 전송 (비동기)
+
+    공식 문서: 콜백 URL은 요청마다 새로 생성되며, 1분 유효, 1회 사용 가능
+    """
     try:
-        settings = get_settings()
-        if not settings.KAKAO_CALLBACK_URL:
-            logger.error("KAKAO_CALLBACK_URL not configured")
+        if not callback_url:
+            logger.error("Callback URL not provided in request")
             return
 
+        # 공식 스펙: SkillResponse 형식으로 응답
         payload = {
-            "kakaoMessage": {
-                "text": callback_text,
-                "typing": True
-            }
+            "version": "2.0",
+            "template": {
+                "outputs": [
+                    {
+                        "simpleText": {
+                            "text": callback_text
+                        }
+                    }
+                ]
+            },
+            "useCallback": True
         }
 
         async with httpx.AsyncClient(timeout=10.0) as client:
             response = await client.post(
-                settings.KAKAO_CALLBACK_URL,
+                callback_url,
                 json=payload
             )
             response.raise_for_status()
-            logger.info("Callback sent successfully")
+            logger.info(f"Callback sent successfully to {callback_url}")
 
     except Exception as e:
         logger.error(f"Error sending callback: {str(e)}")
@@ -140,18 +175,21 @@ async def summarize_article_block(
     블록: 뉴스 기사 URL 입력 → 요약 및 종목 태깅
     응답 시간: 5~10초 (비동기 콜백 처리)
 
-    카카오로 즉시 빈 응답을 보내고, 백그라운드에서 요약 후 콜백 URL로 전송
+    카카오로 즉시 응답을 보내고, 백그라운드에서 요약 후 콜백 URL로 결과 전송
     """
     try:
-        # 사용자 입력 추출 (카카오 형식)
-        article_url = None
-        if request.utterance:
-            article_url = request.utterance.strip()
+        # 콜백 URL 추출 (필수)
+        callback_url = extract_callback_url(request)
+        if not callback_url:
+            return create_skill_response("⚠️ 요청 처리 중 오류가 발생했습니다.")
+
+        # 사용자 입력 추출
+        article_url = request.utterance.strip() if request.utterance else None
 
         if not article_url:
             return create_skill_response("📄 기사 URL을 입력해주세요.")
 
-        # 즉시 응답 (카카오 타임아웃 방지)
+        # 즉시 응답 (카카오 타임아웃 방지 - 2초 이내)
         response = create_skill_response("요약 중입니다... 잠깐만 기다려주세요. ⏳")
 
         # 백그라운드 작업: 기사 추출 → 요약 → 콜백
@@ -160,7 +198,7 @@ async def summarize_article_block(
                 # 1. 기사 텍스트 추출
                 article_text = await extract_article_summary(article_url)
                 if not article_text:
-                    await send_callback("기사를 추출할 수 없습니다. URL을 확인해주세요.")
+                    await send_callback(callback_url, "기사를 추출할 수 없습니다. URL을 확인해주세요.")
                     return
 
                 # 2. Gemini로 요약
@@ -168,27 +206,25 @@ async def summarize_article_block(
                 summary, stocks, impact = await gemini.summarize_article(article_text)
 
                 if not summary:
-                    await send_callback("요약 생성에 실패했습니다.")
+                    await send_callback(callback_url, "요약 생성에 실패했습니다.")
                     return
 
                 # 3. 콜백 메시지 구성
-                callback_msg = f"""
-📰 **기사 요약**
+                callback_msg = f"""📰 **기사 요약**
 
 {summary}
 
 📊 **영향받을 종목**
 {', '.join(stocks) if stocks else '해당 종목 없음'}
 
-⬆️/⬇️ **영향**: {impact if impact else '중립'}
-"""
+⬆️/⬇️ **영향**: {impact if impact else '중립'}"""
 
                 # 4. 카카오로 콜백 전송
-                await send_callback(callback_msg)
+                await send_callback(callback_url, callback_msg)
 
             except Exception as e:
                 logger.error(f"Error processing article: {str(e)}")
-                await send_callback(f"처리 중 오류 발생: {str(e)}")
+                await send_callback(callback_url, f"처리 중 오류 발생: {str(e)}")
 
         # 백그라운드 작업 등록
         background_tasks.add_task(process_article)
@@ -214,6 +250,11 @@ async def summarize_youtube_block(
     응답 시간: 8~15초 (비동기 콜백 처리)
     """
     try:
+        # 콜백 URL 추출 (필수)
+        callback_url = extract_callback_url(request)
+        if not callback_url:
+            return create_skill_response("⚠️ 요청 처리 중 오류가 발생했습니다.")
+
         youtube_url = request.utterance.strip() if request.utterance else None
 
         if not youtube_url:
@@ -226,7 +267,7 @@ async def summarize_youtube_block(
                 # 1. 자막 추출
                 transcript = await get_youtube_transcript(youtube_url)
                 if not transcript:
-                    await send_callback("자막을 추출할 수 없습니다. 유튜브 URL을 확인해주세요.")
+                    await send_callback(callback_url, "자막을 추출할 수 없습니다. 유튜브 URL을 확인해주세요.")
                     return
 
                 # 2. Gemini로 요약
@@ -234,12 +275,11 @@ async def summarize_youtube_block(
                 summary, insight, themes = await gemini.summarize_youtube(transcript)
 
                 if not summary:
-                    await send_callback("요약 생성에 실패했습니다.")
+                    await send_callback(callback_url, "요약 생성에 실패했습니다.")
                     return
 
                 # 3. 콜백 메시지
-                callback_msg = f"""
-🎥 **영상 요약**
+                callback_msg = f"""🎥 **영상 요약**
 
 {summary}
 
@@ -247,14 +287,13 @@ async def summarize_youtube_block(
 {insight if insight else '특별한 인사이트 없음'}
 
 🏷️ **관련 테마**
-{', '.join(themes) if themes else '해당 테마 없음'}
-"""
+{', '.join(themes) if themes else '해당 테마 없음'}"""
 
-                await send_callback(callback_msg)
+                await send_callback(callback_url, callback_msg)
 
             except Exception as e:
                 logger.error(f"Error processing YouTube: {str(e)}")
-                await send_callback(f"처리 중 오류: {str(e)}")
+                await send_callback(callback_url, f"처리 중 오류: {str(e)}")
 
         background_tasks.add_task(process_youtube)
 
@@ -279,6 +318,11 @@ async def stock_analysis_block(
     응답 시간: 8~12초 (비동기 콜백)
     """
     try:
+        # 콜백 URL 추출 (필수)
+        callback_url = extract_callback_url(request)
+        if not callback_url:
+            return create_skill_response("⚠️ 요청 처리 중 오류가 발생했습니다.")
+
         ticker_or_name = request.utterance.strip() if request.utterance else None
 
         if not ticker_or_name:
@@ -291,7 +335,7 @@ async def stock_analysis_block(
                 # 1. 종목 정보 조회
                 stock_info = await get_stock_profile(ticker_or_name)
                 if not stock_info:
-                    await send_callback("종목을 찾을 수 없습니다.")
+                    await send_callback(callback_url, "종목을 찾을 수 없습니다.")
                     return
 
                 # 2. 뉴스 조회
@@ -309,8 +353,7 @@ async def stock_analysis_block(
                 )
 
                 # 4. 콜백 메시지
-                callback_msg = f"""
-📊 **{ticker_or_name} 종합 분석**
+                callback_msg = f"""📊 **{ticker_or_name} 종합 분석**
 
 💰 **현재가**: {stock_info.get('price', 'N/A'):,}원
 📈 **52주**: {stock_info.get('week_52_high', 'N/A'):,} ~ {stock_info.get('week_52_low', 'N/A'):,}
@@ -322,14 +365,13 @@ async def stock_analysis_block(
 {news_impact if news_impact else 'N/A'}
 
 **투자 의견**
-{opinion if opinion else 'N/A'}
-"""
+{opinion if opinion else 'N/A'}"""
 
-                await send_callback(callback_msg)
+                await send_callback(callback_url, callback_msg)
 
             except Exception as e:
                 logger.error(f"Error analyzing stock: {str(e)}")
-                await send_callback(f"분석 중 오류: {str(e)}")
+                await send_callback(callback_url, f"분석 중 오류: {str(e)}")
 
         background_tasks.add_task(analyze_stock)
 

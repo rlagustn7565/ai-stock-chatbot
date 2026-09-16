@@ -25,7 +25,10 @@ class Settings(BaseSettings):
     # 카카오 챗봇 설정
     KAKAO_APP_ID: str = ""
     KAKAO_APP_SECRET: str = ""
-    KAKAO_CALLBACK_URL: str = ""  # 콜백 URL (e.g., https://yourapp.com/v1/callback)
+    # KAKAO_CALLBACK_URL은 더 이상 필요 없음 (요청 페이로드에서 동적으로 받음)
+
+    # Telegram 봇 설정
+    TELEGRAM_BOT_TOKEN: str = ""
 
     # 타임아웃 설정 (밀리초)
     HTTP_TIMEOUT: int = 8000

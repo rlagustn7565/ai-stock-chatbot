@@ -29,6 +29,13 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# 라우터 등록
+from routers.kakao import router as kakao_router
+from routers.telegram import router as telegram_router
+
+app.include_router(kakao_router)
+app.include_router(telegram_router)
+
 
 # ========================================
 # 기본 엔드포인트
