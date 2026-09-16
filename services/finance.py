@@ -1,20 +1,14 @@
 """
-금융 데이터 수집 서비스 (단순화 버전)
-- pykrx: 한국 주가지수 (KOSPI, KOSDAQ)
-- hardcoded fallback: 해외 지수, 환율 (yfinance 불안정성 대비)
+금융 데이터 수집 서비스 (Finnhub API 기반)
+- Finnhub: 지수, 환율, 글로벌 주식
 """
 
 import asyncio
-import yfinance as yf
-from datetime import datetime, timedelta
+import httpx
+from datetime import datetime
 from typing import Optional, Dict
 from utils.logger import get_logger
 from config.settings import get_settings
-
-try:
-    from pykrx import stock
-except ImportError:
-    stock = None
 
 logger = get_logger(__name__)
 
@@ -37,99 +31,42 @@ class IndexService:
 
     @staticmethod
     async def get_index_info(index_name: str) -> Optional[Dict]:
-        """지수 정보 조회 (비동기)"""
+        """Finnhub API로 지수 정보 조회"""
         if index_name not in IndexService.MAJOR_INDICES:
             return None
 
         try:
+            settings = get_settings()
+            api_key = settings.FINNHUB_API_KEY
+
+            if not api_key:
+                logger.error("FINNHUB_API_KEY not set")
+                return None
+
             ticker = IndexService.MAJOR_INDICES[index_name]
-            loop = asyncio.get_event_loop()
 
-            # pykrx 사용: 한국 지수
-            if index_name in ["KOSPI", "KOSDAQ"] and stock:
-                def fetch_kr():
-                    try:
-                        end_date = datetime.now().strftime("%Y%m%d")
-                        start_date = (datetime.now() - timedelta(days=5)).strftime("%Y%m%d")
+            async with httpx.AsyncClient(timeout=8.0) as client:
+                url = f"https://finnhub.io/api/v1/quote?symbol={ticker}&token={api_key}"
+                response = await client.get(url)
+                data = response.json()
 
-                        if index_name == "KOSPI":
-                            return stock.get_index_ohlcv(start_date, end_date, "1001")
-                        else:  # KOSDAQ
-                            return stock.get_index_ohlcv(start_date, end_date, "2001")
-                    except Exception as e:
-                        logger.error(f"pykrx error: {str(e)}")
-                        return None
+            if not data or data.get("error"):
+                logger.warning(f"Finnhub error for {ticker}: {data}")
+                return None
 
-                hist = await loop.run_in_executor(None, fetch_kr)
+            current_price = data.get("c", 0)
+            prev_close = data.get("pc", 0)
+            change = current_price - prev_close
+            change_pct = (change / prev_close * 100) if prev_close != 0 else 0
 
-                if hist is None or hist.empty:
-                    return {
-                        "name": index_name,
-                        "ticker": ticker,
-                        "price": 0,
-                        "change": 0,
-                        "change_percent": 0,
-                        "timestamp": datetime.now().isoformat(),
-                        "note": "데이터를 불러올 수 없습니다"
-                    }
-
-                price = hist["종가"].iloc[-1]
-                open_price = hist["시가"].iloc[-1]
-                change = price - open_price
-                change_pct = (change / open_price * 100) if open_price != 0 else 0
-
-                return {
-                    "name": index_name,
-                    "ticker": ticker,
-                    "price": round(float(price), 2),
-                    "change": round(float(change), 2),
-                    "change_percent": round(float(change_pct), 2),
-                    "timestamp": datetime.now().isoformat()
-                }
-
-            # yfinance: 해외 지수 (fallback with hardcoded mock data)
-            else:
-                def fetch():
-                    try:
-                        data = yf.Ticker(ticker, session=None)
-                        hist = data.history(period="5d")
-                        return hist
-                    except Exception:
-                        return None
-
-                hist = await loop.run_in_executor(None, fetch)
-
-                if hist is None or hist.empty:
-                    # 해외 지수는 기본값으로 반환 (데이터 소스 문제로 인한 임시 조치)
-                    fallback_prices = {
-                        "S&P500": 5900.0,
-                        "NASDAQ": 18500.0
-                    }
-                    base_price = fallback_prices.get(index_name, 100.0)
-
-                    return {
-                        "name": index_name,
-                        "ticker": ticker,
-                        "price": base_price,
-                        "change": 0,
-                        "change_percent": 0,
-                        "timestamp": datetime.now().isoformat(),
-                        "note": "실시간 데이터 불가 (기본값)"
-                    }
-
-                price = hist["Close"].iloc[-1]
-                open_price = hist["Open"].iloc[-1]
-                change = price - open_price
-                change_pct = (change / open_price * 100) if open_price != 0 else 0
-
-                return {
-                    "name": index_name,
-                    "ticker": ticker,
-                    "price": round(float(price), 2),
-                    "change": round(float(change), 2),
-                    "change_percent": round(float(change_pct), 2),
-                    "timestamp": datetime.now().isoformat()
-                }
+            return {
+                "name": index_name,
+                "ticker": ticker,
+                "price": round(float(current_price), 2),
+                "change": round(float(change), 2),
+                "change_percent": round(float(change_pct), 2),
+                "timestamp": datetime.now().isoformat()
+            }
 
         except Exception as e:
             logger.error(f"Error fetching index {index_name}: {str(e)}")
@@ -137,51 +74,37 @@ class IndexService:
 
     @staticmethod
     async def get_currency_rate(currency_pair: str) -> Optional[Dict]:
-        """환율 정보 조회"""
+        """Finnhub API로 환율 조회"""
         if currency_pair not in IndexService.CURRENCIES:
             return None
 
         try:
+            settings = get_settings()
+            api_key = settings.FINNHUB_API_KEY
+
+            if not api_key:
+                logger.error("FINNHUB_API_KEY not set")
+                return None
+
             ticker = IndexService.CURRENCIES[currency_pair]
-            loop = asyncio.get_event_loop()
 
-            # yfinance 시도 (불안정할 가능성 높음)
-            def fetch():
-                try:
-                    data = yf.Ticker(ticker, session=None)
-                    hist = data.history(period="5d")
-                    return hist
-                except Exception:
-                    return None
+            async with httpx.AsyncClient(timeout=8.0) as client:
+                url = f"https://finnhub.io/api/v1/quote?symbol={ticker}&token={api_key}"
+                response = await client.get(url)
+                data = response.json()
 
-            hist = await loop.run_in_executor(None, fetch)
+            if not data or data.get("error"):
+                logger.warning(f"Finnhub error for {ticker}: {data}")
+                return None
 
-            if hist is None or hist.empty:
-                # 환율은 기본값으로 반환 (실시간 데이터 불가)
-                fallback_rates = {
-                    "USD/KRW": 1230.5,
-                    "EUR/KRW": 1350.0,
-                    "JPY/KRW": 8.5
-                }
-                base_rate = fallback_rates.get(currency_pair, 1000.0)
-
-                return {
-                    "pair": currency_pair,
-                    "rate": base_rate,
-                    "change": 0,
-                    "change_percent": 0,
-                    "timestamp": datetime.now().isoformat(),
-                    "note": "실시간 데이터 불가 (기본값)"
-                }
-
-            price = hist["Close"].iloc[-1]
-            open_price = hist["Open"].iloc[-1]
-            change = price - open_price
-            change_pct = (change / open_price * 100) if open_price != 0 else 0
+            current_rate = data.get("c", 0)
+            prev_close = data.get("pc", 0)
+            change = current_rate - prev_close
+            change_pct = (change / prev_close * 100) if prev_close != 0 else 0
 
             return {
                 "pair": currency_pair,
-                "rate": round(float(price), 2),
+                "rate": round(float(current_rate), 2),
                 "change": round(float(change), 2),
                 "change_percent": round(float(change_pct), 2),
                 "timestamp": datetime.now().isoformat()
@@ -203,33 +126,35 @@ class IndexService:
 
 
 class StockService:
-    """주식 정보 서비스 (단순화)"""
+    """주식 정보 서비스"""
 
     @staticmethod
     async def get_stock_info(ticker: str) -> Optional[Dict]:
         """종목 정보 조회"""
         try:
-            loop = asyncio.get_event_loop()
+            settings = get_settings()
+            api_key = settings.FINNHUB_API_KEY
 
-            def fetch():
-                data = yf.Ticker(ticker)
-                hist = data.history(period="1y")
-                return hist
-
-            hist = await loop.run_in_executor(None, fetch)
-
-            if hist.empty:
+            if not api_key:
                 return None
 
-            current_price = hist["Close"].iloc[-1]
-            week_52_high = hist["High"].max()
-            week_52_low = hist["Low"].min()
+            async with httpx.AsyncClient(timeout=8.0) as client:
+                url = f"https://finnhub.io/api/v1/quote?symbol={ticker}&token={api_key}"
+                response = await client.get(url)
+                data = response.json()
+
+            if not data or data.get("error"):
+                return None
+
+            current_price = data.get("c", 0)
+            high_52w = data.get("h52", 0)
+            low_52w = data.get("l52", 0)
 
             return {
                 "ticker": ticker,
                 "price": float(current_price),
-                "week_52_high": float(week_52_high),
-                "week_52_low": float(week_52_low),
+                "week_52_high": float(high_52w),
+                "week_52_low": float(low_52w),
                 "timestamp": datetime.now().isoformat()
             }
 
