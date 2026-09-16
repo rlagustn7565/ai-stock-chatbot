@@ -40,19 +40,20 @@ async def handle_start(chat_id: int):
     """시작 명령어"""
     message = """🤖 *AI 주식/금융 비서*
 
-사용 가능한 명령어:
-/indices - 📊 주요 지수 & 환율
-/news - 📰 최신 금융 뉴스
-/summarize_article - 📄 기사 요약
-/summarize_youtube - 🎥 유튜브 요약
-/analyze_stock - 📈 종목 분석
+📋 *명령어:*
+/s - 시작
+/i - 📊 주요 지수 & 환율
+/n - 📰 최신 금융 뉴스
+/sa - 📄 기사 요약
+/sy - 🎥 유튜브 요약
+/st - 📈 종목 분석
 
-예시:
-/indices
-/news
-/summarize_article https://news.naver.com/...
-/summarize_youtube https://youtube.com/watch?v=...
-/analyze_stock 삼성전자"""
+💡 *사용 예시:*
+/i
+/n
+/sa https://news.naver.com/...
+/sy https://youtube.com/watch?v=...
+/st 삼성전자"""
 
     await send_message(chat_id, message)
 
@@ -255,26 +256,24 @@ async def telegram_webhook(request: dict):
 
         logger.info(f"[Telegram] {chat_id}: {text}")
 
-        # 명령어 라우팅 (언더스코어와 공백 모두 지원)
-        text_normalized = text.replace("_", " ").lower()
-
-        if text == "/start":
+        # 명령어 라우팅
+        if text in ["/s", "/start"]:
             await handle_start(chat_id)
-        elif text == "/indices":
+        elif text in ["/i", "/indices"]:
             await handle_indices(chat_id)
-        elif text == "/news":
+        elif text in ["/n", "/news"]:
             await handle_news(chat_id)
-        elif text_normalized.startswith("/summarize article") or text.startswith("/summarize_article"):
-            url = text.replace("/summarize_article", "").replace("/summarizearticle", "").replace("/summarize article", "").strip()
+        elif text.startswith("/sa "):
+            url = text[4:].strip()
             await handle_summarize_article(chat_id, url)
-        elif text_normalized.startswith("/summarize youtube") or text.startswith("/summarize_youtube"):
-            url = text.replace("/summarize_youtube", "").replace("/summarizeyoutube", "").replace("/summarize youtube", "").strip()
+        elif text.startswith("/sy "):
+            url = text[4:].strip()
             await handle_summarize_youtube(chat_id, url)
-        elif text_normalized.startswith("/analyze stock") or text.startswith("/analyze_stock"):
-            stock = text.replace("/analyze_stock", "").replace("/analyzestock", "").replace("/analyze stock", "").strip()
+        elif text.startswith("/st "):
+            stock = text[4:].strip()
             await handle_analyze_stock(chat_id, stock)
         else:
-            await send_message(chat_id, "❓ 명령어를 인식하지 못했습니다.\n/start 를 입력해주세요.")
+            await send_message(chat_id, "📋 사용 가능한 명령어:\n/s - 시작\n/i - 지수\n/n - 뉴스\n/sa [URL] - 기사요약\n/sy [URL] - 유튜브요약\n/st [종목] - 종목분석")
 
         return {"ok": True}
 
